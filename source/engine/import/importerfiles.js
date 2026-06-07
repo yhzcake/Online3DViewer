@@ -40,6 +40,20 @@ export function InputFilesFromFileObjects (fileObjects)
     return inputFiles;
 }
 
+export function InputFilesFromText (name, text)
+{
+    return [new InputFile (name, FileSource.Text, text)];
+}
+
+export function InputFilesFromTextList (files)
+{
+    let inputFiles = [];
+    for (let file of files) {
+        inputFiles.push (new InputFile (file.name, FileSource.Text, file.text));
+    }
+    return inputFiles;
+}
+
 export class ImporterFile
 {
     constructor (name, source, data)
@@ -150,6 +164,12 @@ export class ImporterFileList
             loaderPromise = RequestUrl (file.data, callbacks.onProgress);
         } else if (file.source === FileSource.File) {
             loaderPromise = ReadFile (file.data, callbacks.onProgress);
+        } else if (file.source === FileSource.Text) {
+            // Convert text to ArrayBuffer
+            const encoder = new TextEncoder ();
+            file.SetContent (encoder.encode (file.data).buffer);
+            callbacks.onReady ();
+            return;
         } else {
             callbacks.onReady ();
             return;

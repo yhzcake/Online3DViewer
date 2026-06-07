@@ -1,5 +1,5 @@
 import { GetFileExtension, TransformFileHostUrls } from '../engine/io/fileutils.js';
-import { InputFilesFromFileObjects, InputFilesFromUrls } from '../engine/import/importerfiles.js';
+import { InputFilesFromFileObjects, InputFilesFromUrls, InputFilesFromTextList } from '../engine/import/importerfiles.js';
 import { ImportErrorCode, ImportSettings } from '../engine/import/importer.js';
 import { NavigationMode, ProjectionMode } from '../engine/viewer/camera.js';
 import { RGBColor } from '../engine/model/color.js';
@@ -18,6 +18,7 @@ import { DownloadModel, ShowExportDialog } from './exportdialog.js';
 import { ShowSnapshotDialog } from './snapshotdialog.js';
 import { AddSvgIconElement, GetFilesFromDataTransfer, InstallTooltip, IsSmallWidth } from './utils.js';
 import { ShowOpenUrlDialog } from './openurldialog.js';
+import { ShowImportTextDialog } from './openimporttextdialog.js';
 import { ShowSharingDialog } from './sharingdialog.js';
 import { GetDefaultMaterials, ReplaceDefaultMaterialsColor } from '../engine/model/modelutils.js';
 import { Direction } from '../engine/geometry/geometry.js';
@@ -29,6 +30,8 @@ import { EnumeratePlugins, PluginType } from './pluginregistry.js';
 import { EnvironmentSettings } from '../engine/viewer/shadingmodel.js';
 import { IntersectionMode } from '../engine/viewer/viewermodel.js';
 import { Loc } from '../engine/core/localization.js';
+import { TextureMap, FaceMaterial } from '../engine/model/material.js';
+import { ModelToThreeConversionParams, ModelToThreeConversionOutput, ConvertModelToThreeObject } from '../engine/threejs/threeconverter.js';
 
 const WebsiteUIState =
 {
@@ -534,6 +537,112 @@ export class Website
         });
     }
 
+    LoadModelFromText (modelText, svgText, modelType)
+    {
+        let hasSvg = svgText && svgText.trim().length > 0;
+        let inputFiles = [];
+        inputFiles.push ({ name: 'model.' + modelType, text: modelText });
+        if (hasSvg) {
+            inputFiles.push ({ name: 'texture.svg', text: svgText });
+        }
+        let importSettings = new ImportSettings ();
+        importSettings.defaultLineColor = this.settings.defaultLineColor;
+        importSettings.defaultColor = this.settings.defaultColor;
+        let files = InputFilesFromTextList (inputFiles);
+
+        this.modelLoaderUI.LoadModel (files, importSettings, {
+            onStart : () =>
+            {
+                this.SetUIState (WebsiteUIState.Loading);
+                this.ClearModel ();
+            },
+            onFileListProgress : (current, total) => {},
+            onFileLoadProgress : (current, total) => {},
+            onSelectMainFile : (fileNames, selectFile) => { selectFile(0); },
+            onImportStart : () => {},
+            onVisualizationStart : () => {},
+            onModelFinished : (importResult, threeObject) =>
+            {
+                if (hasSvg) {
+                    // Apply SVG as texture
+                    let textureFile = importResult.mainFile;
+                    let importer = this.modelLoaderUI.GetImporter ();
+                    let fileList = importer.GetFileList ();
+                    let svgBuffer = fileList.FindFileByPath('texture.svg');
+                    if (svgBuffer !== null && svgBuffer.content !== null) {
+                        // Create TextureMap
+                        let textureMap = new TextureMap();
+                        textureMap.name = 'texture.svg';
+                        textureMap.mimeType = 'image/svg+xml';
+                        textureMap.buffer = svgBuffer.content;
+
+                        // Apply to all materials in model
+                        for (let i = 0; i < importResult.model.MaterialCount(); i++) {
+                            let material = importResult.model.GetMaterial(i);
+                            if (material instanceof FaceMaterial) {
+                                material.diffuseMap = textureMap;
+                            }
+                        }
+
+                        // Now reload textures again? Or wait, let's re-convert? Wait no: the ThreeModelLoader already converted the model! Wait, because when we set the diffuseMap on the model's material after conversion, that's not automatically applied to the threeObject! Hmm, okay so what to do? Let's re-run ConvertModelToThreeObject again, but with the modified materials! Wait, okay let's see!
+                        // Wait let's look at threeconverter.js: ConvertModelToThreeObject!
+                        let conversionParams = new ModelToThreeConversionParams();
+                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.hasHighpDriverIssue;
+                        let conversionOutput = new ModelToThreeConversionOutput();
+                        ConvertModelToThreeObject(importResult.model, conversionParams, conversionOutput, {
+                            onTextureLoaded : () => {
+                                this.viewer.Render();
+                            },
+                            onModelLoaded : (newThreeObject) => {
+                                // Okay, now apply the new threeObject!
+                                this.SetUIState (WebsiteUIState.Model);
+                                this.OnModelLoaded (importResult, newThreeObject);
+                                let importedExtension = GetFileExtension (importResult.mainFile);
+                                HandleEvent ('model_loaded', importedExtension);
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                this.SetUIState (WebsiteUIState.Model);
+                this.OnModelLoaded (importResult, threeObject);
+                let importedExtension = GetFileExtension (importResult.mainFile);
+                HandleEvent ('model_loaded', importedExtension);
+            },
+            onTextureLoaded : () =>
+            {
+                this.viewer.Render();
+            },
+            onLoadError : (importError) =>
+            {
+                this.SetUIState (WebsiteUIState.Intro);
+                let extensionStr = null;
+                if (importError.mainFile !== null) {
+                    extensionStr = GetFileExtension (importError.mainFile);
+                } else {
+                    let extensions = [];
+                    let importer = this.modelLoaderUI.GetImporter ();
+                    let fileList = importer.GetFileList ().GetFiles ();
+                    for (let i = 0; i < fileList.length; i++) {
+                        let extension = fileList[i].extension;
+                        extensions.push (extension);
+                    }
+                    extensionStr = extensions.join (',');
+                }
+                if (importError.code === ImportErrorCode.NoImportableFile) {
+                    HandleEvent ('no_importable_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.FailedToLoadFile) {
+                    HandleEvent ('failed_to_load_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.ImportFailed) {
+                    HandleEvent ('import_failed', extensionStr, {
+                        error_message : importError.message
+                    });
+                }
+            }
+        });
+    }
+
     ClearHashIfNotOnlyUrlList ()
     {
         let importer = this.modelLoaderUI.GetImporter ();
@@ -665,6 +774,11 @@ export class Website
                 if (urls.length > 0) {
                     this.hashHandler.SetModelFilesToHash (urls);
                 }
+            });
+        });
+        AddButton (this.toolbar, 'open', Loc ('Open from text'), [], () => {
+            ShowImportTextDialog ((modelText, svgText, modelType) => {
+                this.LoadModelFromText (modelText, svgText, modelType);
             });
         });
         AddSeparator (this.toolbar, ['only_on_model']);
