@@ -97,8 +97,7 @@ export class Importer
             new ImporterThreeDae (),
             new ImporterThreeWrl (),
             new ImporterThree3mf (),
-            new ImporterThreeAmf (),
-            new ImporterThreeSvg ()
+            new ImporterThreeAmf ()
         ];
         this.fileList = new ImporterFileList ();
         this.model = null;
