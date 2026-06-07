@@ -13,7 +13,8 @@ export class ImporterThreeSvg extends ImporterThreeBase
 
     CanImportExtension (extension)
     {
-        return extension === 'svg';
+        // 禁用 SVG 作为模型导入，只允许作为纹理
+        return false;
     }
 
     GetUpDirection ()
