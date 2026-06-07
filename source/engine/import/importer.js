@@ -291,14 +291,19 @@ export class Importer
     {
         function FindImporter (file, importers)
         {
+            console.log('Looking for importer for file:', file.name, file.extension);
             for (let importerIndex = 0; importerIndex < importers.length; importerIndex++) {
                 let importer = importers[importerIndex];
-                if (importer.CanImportExtension (file.extension)) {
+                let canImport = importer.CanImportExtension (file.extension);
+                console.log('Importer:', importer.constructor.name, 'CanImportExtension:', canImport);
+                if (canImport) {
                     return importer;
                 }
             }
             return null;
         }
+
+        console.log('this.importers:', this.importers.map(i => i.constructor.name));
 
         let importableFiles = [];
         let files = fileList.GetFiles ();
@@ -312,6 +317,7 @@ export class Importer
                 });
             }
         }
+        console.log('Final importable files:', importableFiles.map(f => f.file.name));
         return importableFiles;
     }
 }
