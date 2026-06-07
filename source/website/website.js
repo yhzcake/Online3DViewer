@@ -32,6 +32,7 @@ import { IntersectionMode } from '../engine/viewer/viewermodel.js';
 import { Loc } from '../engine/core/localization.js';
 import { TextureMap, FaceMaterial } from '../engine/model/material.js';
 import { ModelToThreeConversionParams, ModelToThreeConversionOutput, ConvertModelToThreeObject } from '../engine/threejs/threeconverter.js';
+import * as THREE from 'three';
 
 const WebsiteUIState =
 {
@@ -584,17 +585,27 @@ export class Website
                             }
                         }
 
-                        // Now reload textures again? Or wait, let's re-convert? Wait no: the ThreeModelLoader already converted the model! Wait, because when we set the diffuseMap on the model's material after conversion, that's not automatically applied to the threeObject! Hmm, okay so what to do? Let's re-run ConvertModelToThreeObject again, but with the modified materials! Wait, okay let's see!
-                        // Wait let's look at threeconverter.js: ConvertModelToThreeObject!
+                        // Now reload textures again? Or wait, let's re-convert!
                         let conversionParams = new ModelToThreeConversionParams();
-                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.hasHighpDriverIssue;
+                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.modelLoader.hasHighpDriverIssue;
                         let conversionOutput = new ModelToThreeConversionOutput();
                         ConvertModelToThreeObject(importResult.model, conversionParams, conversionOutput, {
                             onTextureLoaded : () => {
                                 this.viewer.Render();
                             },
                             onModelLoaded : (newThreeObject) => {
-                                // Okay, now apply the new threeObject!
+                                // Now do the upVector handling just like in ThreeModelLoader!
+                                if (importResult.upVector === Direction.X) {
+                                    let rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0.0, 0.0, 1.0), Math.PI / 2.0);
+                                    newThreeObject.quaternion.multiply(rotation);
+                                } else if (importResult.upVector === Direction.Z) {
+                                    let rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1.0, 0.0, 0.0), -Math.PI / 2.0);
+                                    newThreeObject.quaternion.multiply(rotation);
+                                }
+                                // Also, we need to make sure to revoke old object urls!
+                                this.modelLoaderUI.modelLoader.RevokeObjectUrls();
+                                this.modelLoaderUI.modelLoader.objectUrls = conversionOutput.objectUrls;
+                                this.modelLoaderUI.modelLoader.defaultMaterials = conversionOutput.defaultMaterials;
                                 this.SetUIState (WebsiteUIState.Model);
                                 this.OnModelLoaded (importResult, newThreeObject);
                                 let importedExtension = GetFileExtension (importResult.mainFile);
