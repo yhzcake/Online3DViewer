@@ -9,7 +9,9 @@ export const FileSource =
 	/** The file is provided by a {@link File} object. */
     File : 2,
 	/** Used internally if a file is originated by a compressed archive. */
-	Decompressed : 3
+	Decompressed : 3,
+	/** The file is provided as text content directly. */
+	Text : 4
 };
 
 export const FileFormat =

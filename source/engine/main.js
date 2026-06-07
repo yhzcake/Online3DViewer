@@ -29,7 +29,7 @@ import { Importer3ds } from './import/importer3ds.js';
 import { ImporterBase } from './import/importerbase.js';
 import { ImporterBim } from './import/importerbim.js';
 import { ImporterFcstd } from './import/importerfcstd.js';
-import { InputFile, ImporterFile, ImporterFileList, InputFilesFromUrls, InputFilesFromFileObjects } from './import/importerfiles.js';
+import { InputFile, ImporterFile, ImporterFileList, InputFilesFromUrls, InputFilesFromFileObjects, InputFilesFromText } from './import/importerfiles.js';
 import { ImporterGltf } from './import/importergltf.js';
 import { ImporterIfc } from './import/importerifc.js';
 import { ImporterObj } from './import/importerobj.js';
@@ -172,6 +172,7 @@ export {
     ImporterFileList,
     InputFilesFromUrls,
     InputFilesFromFileObjects,
+    InputFilesFromText,
     ImporterGltf,
     ImporterIfc,
     ImporterObj,

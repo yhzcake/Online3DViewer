@@ -1,5 +1,5 @@
 import { GetFileExtension, TransformFileHostUrls } from '../engine/io/fileutils.js';
-import { InputFilesFromFileObjects, InputFilesFromUrls } from '../engine/import/importerfiles.js';
+import { InputFilesFromFileObjects, InputFilesFromUrls, InputFilesFromText } from '../engine/import/importerfiles.js';
 import { ImportErrorCode, ImportSettings } from '../engine/import/importer.js';
 import { NavigationMode, ProjectionMode } from '../engine/viewer/camera.js';
 import { RGBColor } from '../engine/model/color.js';
@@ -222,6 +222,7 @@ export class Website
         this.InitSidebar ();
         this.InitNavigator ();
         this.InitCookieConsent ();
+        this.InitTextInput ();
 
         this.viewer.SetMouseClickHandler (this.OnModelClicked.bind (this));
         this.viewer.SetMouseMoveHandler (this.OnModelMouseMoved.bind (this));
@@ -236,6 +237,43 @@ export class Website
         window.addEventListener ('resize', () => {
 			this.layouter.Resize ();
 		});
+    }
+
+    InitTextInput ()
+    {
+        const loadButton = document.getElementById ('load_text_button');
+        if (loadButton) {
+            loadButton.addEventListener ('click', () => {
+                this.LoadModelFromText ();
+            });
+        }
+    }
+
+    LoadModelFromText ()
+    {
+        const modelText = document.getElementById ('model_text_input')?.value;
+        const modelFilename = document.getElementById ('model_filename_input')?.value || 'model.obj';
+        const textureText = document.getElementById ('texture_text_input')?.value;
+        const textureFilename = document.getElementById ('texture_filename_input')?.value || 'texture.svg';
+
+        const fileTexts = {};
+        if (modelText) {
+            fileTexts[modelFilename] = modelText;
+        }
+        if (textureText) {
+            fileTexts[textureFilename] = textureText;
+        }
+
+        if (Object.keys (fileTexts).length === 0) {
+            return;
+        }
+
+        const importSettings = new ImportSettings ();
+        importSettings.defaultLineColor = this.settings.defaultLineColor;
+        importSettings.defaultColor = this.settings.defaultColor;
+
+        const inputFiles = InputFilesFromText (fileTexts);
+        this.LoadModelFromInputFiles (inputFiles, importSettings);
     }
 
     HasLoadedModel ()
