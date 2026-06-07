@@ -309,6 +309,10 @@ export class Importer
         let files = fileList.GetFiles ();
         for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
             let file = files[fileIndex];
+            // 直接跳过 SVG 文件！
+            if (file.extension.toLowerCase() === 'svg') {
+                continue;
+            }
             let importer = FindImporter (file, this.importers);
             if (importer !== null) {
                 importableFiles.push ({

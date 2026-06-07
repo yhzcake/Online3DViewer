@@ -257,9 +257,11 @@ export class Website
         const textureFilename = document.getElementById ('texture_filename_input')?.value || 'texture.svg';
 
         const fileTexts = {};
+        // 先添加模型文件
         if (modelText) {
             fileTexts[modelFilename] = modelText;
         }
+        // 再添加纹理文件
         if (textureText) {
             fileTexts[textureFilename] = textureText;
         }
@@ -273,7 +275,68 @@ export class Website
         importSettings.defaultColor = this.settings.defaultColor;
 
         const inputFiles = InputFilesFromText (fileTexts);
-        this.LoadModelFromInputFiles (inputFiles, importSettings);
+
+        // 关键修改：在导入前自定义处理逻辑，确保只有模型文件被导入，纹理只作为附属
+        // 临时修改 ImportFiles 方法，或者我们直接使用网站中 LoadModelFromInputFiles 调用
+        // 让我们包装一下，确保主文件一定是模型文件
+        const originalLoadModelFromInputFiles = this.LoadModelFromInputFiles.bind(this);
+        
+        // 我们直接调用，并且修改后续逻辑
+        this.modelLoaderUI.LoadModel(inputFiles, importSettings, {
+            onStart: () => {
+                this.SetUIState(WebsiteUIState.Loading);
+                this.ClearModel();
+            },
+            onFinish: (importResult, threeObject) => {
+                this.SetUIState(WebsiteUIState.Model);
+                this.OnModelLoaded(importResult, threeObject);
+                const importedExtension = GetFileExtension(importResult.mainFile);
+                HandleEvent('model_loaded', importedExtension);
+            },
+            onRender: () => {
+                this.viewer.Render();
+            },
+            onError: (importError) => {
+                this.SetUIState(WebsiteUIState.Intro);
+                let extensionStr = null;
+                if (importError.mainFile !== null) {
+                    extensionStr = GetFileExtension(importError.mainFile);
+                } else {
+                    const importer = this.modelLoaderUI.GetImporter();
+                    const fileList = importer.GetFileList().GetFiles();
+                    const extensions = [];
+                    for (let i = 0; i < fileList.length; i++) {
+                        const extension = fileList[i].extension;
+                        extensions.push(extension);
+                    }
+                    extensionStr = extensions.join(',');
+                }
+                if (importError.code === ImportErrorCode.NoImportableFile) {
+                    HandleEvent('no_importable_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.FailedToLoadFile) {
+                    HandleEvent('failed_to_load_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.ImportFailed) {
+                    HandleEvent('import_failed', extensionStr, {
+                        error_message: importError.message
+                    });
+                }
+            },
+            onSelectMainFile: (fileNames, selectMainFile) => {
+                // 关键！我们确保只选择模型文件（比如 obj, stl 等）作为主文件
+                console.log('Available main file candidates:', fileNames);
+                for (const fileName of fileNames) {
+                    const ext = GetFileExtension(fileName).toLowerCase();
+                    const modelExtensions = ['obj', 'stl', 'off', 'ply', '3ds', 'gltf', 'glb', 'bim', '3dm', 'ifc', 'fbx', 'dae', 'wrl', '3mf', 'amf'];
+                    if (modelExtensions.includes(ext)) {
+                        console.log('Selected main file:', fileName);
+                        selectMainFile(fileNames.indexOf(fileName));
+                        return;
+                    }
+                }
+                // 如果没找到，就选择第一个
+                selectMainFile(0);
+            }
+        });
     }
 
     HasLoadedModel ()
