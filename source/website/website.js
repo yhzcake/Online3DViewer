@@ -1,5 +1,5 @@
 import { GetFileExtension, TransformFileHostUrls } from '../engine/io/fileutils.js';
-import { InputFilesFromFileObjects, InputFilesFromUrls } from '../engine/import/importerfiles.js';
+import { InputFilesFromFileObjects, InputFilesFromUrls, InputFilesFromTextList } from '../engine/import/importerfiles.js';
 import { ImportErrorCode, ImportSettings } from '../engine/import/importer.js';
 import { NavigationMode, ProjectionMode } from '../engine/viewer/camera.js';
 import { RGBColor } from '../engine/model/color.js';
@@ -18,7 +18,11 @@ import { DownloadModel, ShowExportDialog } from './exportdialog.js';
 import { ShowSnapshotDialog } from './snapshotdialog.js';
 import { AddSvgIconElement, GetFilesFromDataTransfer, InstallTooltip, IsSmallWidth } from './utils.js';
 import { ShowOpenUrlDialog } from './openurldialog.js';
+import { ShowImportTextDialog } from './openimporttextdialog.js';
 import { ShowSharingDialog } from './sharingdialog.js';
+import { TextureMap, FaceMaterial } from '../engine/model/material.js';
+import { ModelToThreeConversionParams, ModelToThreeConversionOutput, ConvertModelToThreeObject } from '../engine/threejs/threeconverter.js';
+import * as THREE from 'three';
 import { GetDefaultMaterials, ReplaceDefaultMaterialsColor } from '../engine/model/modelutils.js';
 import { Direction } from '../engine/geometry/geometry.js';
 import { CookieGetBoolVal, CookieSetBoolVal } from './cookiehandler.js';
@@ -534,6 +538,122 @@ export class Website
         });
     }
 
+    LoadModelFromText (modelText, svgText, modelType)
+    {
+        let hasSvg = svgText && svgText.trim().length > 0;
+        let inputFiles = [];
+        inputFiles.push ({ name: 'model.' + modelType, text: modelText });
+        if (hasSvg) {
+            inputFiles.push ({ name: 'texture.svg', text: svgText });
+        }
+        let importSettings = new ImportSettings ();
+        importSettings.defaultLineColor = this.settings.defaultLineColor;
+        importSettings.defaultColor = this.settings.defaultColor;
+        let files = InputFilesFromTextList (inputFiles);
+
+        this.modelLoaderUI.LoadModel (files, importSettings, {
+            onStart : () =>
+            {
+                this.SetUIState (WebsiteUIState.Loading);
+                this.ClearModel ();
+            },
+            onFileListProgress : (current, total) => {},
+            onFileLoadProgress : (current, total) => {},
+            onSelectMainFile : (fileNames, selectFile) => { selectFile(0); },
+            onImportStart : () => {},
+            onVisualizationStart : () => {},
+            onModelFinished : (importResult, threeObject) =>
+            {
+                if (hasSvg) {
+                    // Apply SVG as texture
+                    let textureFile = importResult.mainFile;
+                    let importer = this.modelLoaderUI.GetImporter ();
+                    let fileList = importer.GetFileList ();
+                    let svgBuffer = fileList.FindFileByPath('texture.svg');
+                    if (svgBuffer !== null && svgBuffer.content !== null) {
+                        // Create TextureMap
+                        let textureMap = new TextureMap();
+                        textureMap.name = 'texture.svg';
+                        textureMap.mimeType = 'image/svg+xml';
+                        textureMap.buffer = svgBuffer.content;
+
+                        // Apply to all materials in model
+                        for (let i = 0; i < importResult.model.MaterialCount(); i++) {
+                            let material = importResult.model.GetMaterial(i);
+                            if (material instanceof FaceMaterial) {
+                                material.diffuseMap = textureMap;
+                            }
+                        }
+
+                        // Re-convert model to three.js
+                        let conversionParams = new ModelToThreeConversionParams();
+                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.modelLoader.hasHighpDriverIssue;
+                        let conversionOutput = new ModelToThreeConversionOutput();
+                        ConvertModelToThreeObject(importResult.model, conversionParams, conversionOutput, {
+                            onTextureLoaded : () => {
+                                this.viewer.Render();
+                            },
+                            onModelLoaded : (newThreeObject) => {
+                                // Now do the upVector handling just like in ThreeModelLoader!
+                                if (importResult.upVector === Direction.X) {
+                                    let rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0.0, 0.0, 1.0), Math.PI / 2.0);
+                                    newThreeObject.quaternion.multiply(rotation);
+                                } else if (importResult.upVector === Direction.Z) {
+                                    let rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1.0, 0.0, 0.0), -Math.PI / 2.0);
+                                    newThreeObject.quaternion.multiply(rotation);
+                                }
+                                // Also, we need to make sure to revoke old object urls!
+                                this.modelLoaderUI.modelLoader.RevokeObjectUrls();
+                                this.modelLoaderUI.modelLoader.objectUrls = conversionOutput.objectUrls;
+                                this.modelLoaderUI.modelLoader.defaultMaterials = conversionOutput.defaultMaterials;
+                                this.SetUIState (WebsiteUIState.Model);
+                                this.OnModelLoaded (importResult, newThreeObject);
+                                let importedExtension = GetFileExtension (importResult.mainFile);
+                                HandleEvent ('model_loaded', importedExtension);
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                this.SetUIState (WebsiteUIState.Model);
+                this.OnModelLoaded (importResult, threeObject);
+                let importedExtension = GetFileExtension (importResult.mainFile);
+                HandleEvent ('model_loaded', importedExtension);
+            },
+            onTextureLoaded : () =>
+            {
+                this.viewer.Render();
+            },
+            onLoadError : (importError) =>
+            {
+                this.SetUIState (WebsiteUIState.Intro);
+                let extensionStr = null;
+                if (importError.mainFile !== null) {
+                    extensionStr = GetFileExtension (importError.mainFile);
+                } else {
+                    let extensions = [];
+                    let importer = this.modelLoaderUI.GetImporter ();
+                    let fileList = importer.GetFileList ().GetFiles ();
+                    for (let i = 0; i < fileList.length; i++) {
+                        let extension = fileList[i].extension;
+                        extensions.push (extension);
+                    }
+                    extensionStr = extensions.join (',');
+                }
+                if (importError.code === ImportErrorCode.NoImportableFile) {
+                    HandleEvent ('no_importable_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.FailedToLoadFile) {
+                    HandleEvent ('failed_to_load_file', extensionStr);
+                } else if (importError.code === ImportErrorCode.ImportFailed) {
+                    HandleEvent ('import_failed', extensionStr, {
+                        error_message : importError.message
+                    });
+                }
+            }
+        });
+    }
+
     ClearHashIfNotOnlyUrlList ()
     {
         let importer = this.modelLoaderUI.GetImporter ();
@@ -665,6 +785,11 @@ export class Website
                 if (urls.length > 0) {
                     this.hashHandler.SetModelFilesToHash (urls);
                 }
+            });
+        });
+        AddButton (this.toolbar, 'open', Loc ('Open from text'), [], () => {
+            ShowImportTextDialog ((modelText, svgText, modelType) => {
+                this.LoadModelFromText (modelText, svgText, modelType);
             });
         });
         AddSeparator (this.toolbar, ['only_on_model']);
