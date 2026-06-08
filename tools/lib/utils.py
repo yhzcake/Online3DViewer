@@ -27,7 +27,11 @@ def GetEOLCharFromFile (filePath):
 		return '\n'
 
 def RunCommand (executable, arguments):
-	command = executable + ' "' + '" "'.join (arguments) + '"'
+	# Check if it's an npm package (contains hyphen or starts with common npm patterns)
+	if '-' in executable or executable in ['fantasticon', 'svgo', 'oslllo-svg-fixer']:
+		command = 'npx ' + executable + ' "' + '" "'.join (arguments) + '"'
+	else:
+		command = executable + ' "' + '" "'.join (arguments) + '"'
 	return os.system (command)
 
 class TokenReplacer:
