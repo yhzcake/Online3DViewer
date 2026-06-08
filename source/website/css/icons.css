@@ -128,6 +128,9 @@ i[class^="icon-"]:before, i[class*=" icon-"]:before {
 .icon-open:before {
     content: "\f126";
 }
+.icon-open_text:before {
+    content: "\f132";
+}
 .icon-print3d:before {
     content: "\f127";
 }

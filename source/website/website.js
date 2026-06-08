@@ -562,7 +562,7 @@ export class Website
             onSelectMainFile : (fileNames, selectFile) => { selectFile(0); },
             onImportStart : () => {},
             onVisualizationStart : () => {},
-            onModelFinished : (importResult, threeObject) =>
+            onFinish : (importResult, threeObject) =>
             {
                 if (hasSvg) {
                     // Apply SVG as texture
@@ -587,7 +587,7 @@ export class Website
 
                         // Re-convert model to three.js
                         let conversionParams = new ModelToThreeConversionParams();
-                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.modelLoader.hasHighpDriverIssue;
+                        conversionParams.forceMediumpForMaterials = this.modelLoaderUI.GetModelLoader().hasHighpDriverIssue;
                         let conversionOutput = new ModelToThreeConversionOutput();
                         ConvertModelToThreeObject(importResult.model, conversionParams, conversionOutput, {
                             onTextureLoaded : () => {
@@ -603,9 +603,9 @@ export class Website
                                     newThreeObject.quaternion.multiply(rotation);
                                 }
                                 // Also, we need to make sure to revoke old object urls!
-                                this.modelLoaderUI.modelLoader.RevokeObjectUrls();
-                                this.modelLoaderUI.modelLoader.objectUrls = conversionOutput.objectUrls;
-                                this.modelLoaderUI.modelLoader.defaultMaterials = conversionOutput.defaultMaterials;
+                                this.modelLoaderUI.GetModelLoader().RevokeObjectUrls();
+                                this.modelLoaderUI.GetModelLoader().objectUrls = conversionOutput.objectUrls;
+                                this.modelLoaderUI.GetModelLoader().defaultMaterials = conversionOutput.defaultMaterials;
                                 this.SetUIState (WebsiteUIState.Model);
                                 this.OnModelLoaded (importResult, newThreeObject);
                                 let importedExtension = GetFileExtension (importResult.mainFile);
@@ -787,7 +787,7 @@ export class Website
                 }
             });
         });
-        AddButton (this.toolbar, 'open', Loc ('Open from text'), [], () => {
+        AddButton (this.toolbar, 'open_text', Loc ('Open from text'), [], () => {
             ShowImportTextDialog ((modelText, svgText, modelType) => {
                 this.LoadModelFromText (modelText, svgText, modelType);
             });
